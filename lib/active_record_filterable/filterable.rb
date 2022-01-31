@@ -37,12 +37,22 @@ module ActiveRecord
           end
         end
 
-        merge(criteria)
+        if all.send(:structurally_incompatible_values_for, criteria).empty?
+          self.and(criteria)
+        else
+          wrap_model_subquery(all).and(wrap_model_subquery(criteria))
+        end
       end
 
       def scope(name, scope_options, &block)
         super
         scope_arities[name] = scope_options.is_a?(Proc) ? scope_options.arity : -1
+      end
+
+      def wrap_model_subquery(scope)
+        real_model_class = all.klass
+
+        real_model_class.where(real_model_class.primary_key => scope)
       end
 
       ##
@@ -64,7 +74,7 @@ module ActiveRecord
         adapter_name = ActiveRecord::Base.connection.adapter_name.downcase
 
         body =
-          if adapter_name.starts_with?('postgresql')
+          if adapter_name.start_with?('postgresql')
             lambda { |value|
               where("unaccent(#{attr}) ILIKE unaccent(?)", "%#{sanitize_sql_like(value)}%")
             }
